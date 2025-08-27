@@ -1,6 +1,6 @@
 {
-  "name": "price-poller",
-  "module": "src/index.ts",
+  "name": "db",
+  "module": "index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {
@@ -11,8 +11,6 @@
     "typescript": "^5"
   },
   "dependencies": {
-    "bullmq": "^5.58.2",
-    "ioredis": "^5.7.0",
     "pg": "^8.16.3"
   }
 }

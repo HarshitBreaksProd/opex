@@ -1,6 +1,6 @@
 {
-  "name": "price-poller",
-  "module": "src/index.ts",
+  "name": "worker",
+  "module": "index.ts",
   "type": "module",
   "private": true,
   "devDependencies": {

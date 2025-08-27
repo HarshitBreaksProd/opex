@@ -1,5 +1,6 @@
 import { WebSocket } from "ws";
-import { createDbConnection } from "./db-pool";
+import { createDbConnection } from "./db-client";
+import { processingQueue } from "./queue";
 
 type filteredDataType = {
   event: string;
@@ -11,7 +12,7 @@ type filteredDataType = {
   ask_price: number;
 };
 
-const FILTERED_DATA_ARRAY: filteredDataType[] = [];
+let FILTERED_DATA_ARRAY: filteredDataType[] = [];
 let LAST_INSERT_TIME = Date.now();
 
 const ws = new WebSocket(
@@ -23,6 +24,7 @@ const main = async () => {
 
   ws.on("open", () => {
     console.log("Connected");
+    LAST_INSERT_TIME = Date.now();
   });
 
   ws.on("message", async (dataBuffer) => {
@@ -39,67 +41,55 @@ const main = async () => {
       ask_price: parseFloat(trade.data.p) + 0.02 * parseFloat(trade.data.p),
     };
 
-    const client = await createDbConnection();
-
-    console.log(filteredData);
-
-    const res = await client.query(
-      "INSERT INTO trades (event, event_time, symbol, price, quantity, bid_price, ask_price) VALUES ($1::string[], $2::timestamptz[], $3::string[], $4::string[], $5::float[], $6::float[], $7::float[])",
-      [
-        filteredData.event,
-        filteredData.event_time,
-        filteredData.symbol,
-        filteredData.price,
-        filteredData.quantity,
-        filteredData.bid_price,
-        filteredData.ask_price,
-      ]
-    );
-
-    console.log(JSON.stringify(res));
-
     FILTERED_DATA_ARRAY.push(filteredData);
-  });
 
-  while (1) {
-    if (
-      FILTERED_DATA_ARRAY.length > 1000
-      // || Date.now() - LAST_INSERT_TIME > 5000
-    ) {
-      try {
-        const events = FILTERED_DATA_ARRAY.map((data) => data.event);
-        const event_times = FILTERED_DATA_ARRAY.map((data) => data.event_time);
-        const symbols = FILTERED_DATA_ARRAY.map((data) => data.symbol);
-        const prices = FILTERED_DATA_ARRAY.map((data) => data.price);
-        const quantities = FILTERED_DATA_ARRAY.map((data) => data.quantity);
-        const bid_prices = FILTERED_DATA_ARRAY.map((data) => data.bid_price);
-        const ask_prices = FILTERED_DATA_ARRAY.map((data) => data.ask_price);
+    console.log(FILTERED_DATA_ARRAY.length);
 
-        const query = `
-            INSERT INTO trades (event, event_time, symbol, price, quantity, bid_price, ask_price)
-            SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[])
-          `;
+    // if (
+    //   FILTERED_DATA_ARRAY.length >= 300 ||
+    //   Date.now() - LAST_INSERT_TIME >= 5000
+    // ) {
+    //   try {
+    //     const events = FILTERED_DATA_ARRAY.map((data) => data.event);
+    //     const event_times = FILTERED_DATA_ARRAY.map((data) => data.event_time);
+    //     const symbols = FILTERED_DATA_ARRAY.map((data) => data.symbol);
+    //     const prices = FILTERED_DATA_ARRAY.map((data) => data.price);
+    //     const quantities = FILTERED_DATA_ARRAY.map((data) => data.quantity);
+    //     const bid_prices = FILTERED_DATA_ARRAY.map((data) => data.bid_price);
+    //     const ask_prices = FILTERED_DATA_ARRAY.map((data) => data.ask_price);
 
-        const res = await client.query(query, [
-          events,
-          event_times,
-          symbols,
-          prices,
-          quantities,
-          bid_prices,
-          ask_prices,
-        ]);
+    //     FILTERED_DATA_ARRAY = []; // WE keep this here because the insert takes time and the filtered data array is not updated so it triggers the insert multiple times
+    //     LAST_INSERT_TIME = Date.now();
 
-        console.log(JSON.stringify(res));
+    //     const query = `
+    //         INSERT INTO trades (event, event_time, symbol, price, quantity, bid_price, ask_price)
+    //         SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[])
+    //       `;
 
-        console.log("Inserted into db");
+    //     await client.query(query, [
+    //       events,
+    //       event_times,
+    //       symbols,
+    //       prices,
+    //       quantities,
+    //       bid_prices,
+    //       ask_prices,
+    //     ]);
 
-        LAST_INSERT_TIME = Date.now();
-      } catch (e) {
-        console.log(e);
-      }
+    //     console.log("Inserted into db");
+    //     console.log(events.length);
+    //   } catch (e) {
+    //     console.log(e);
+    //   }
+    // }
+
+    try{
+      await processingQueue.add('process-trade', filteredData);
+    } catch (error) {
+      console.log(error);
+      console.log("Error pushing into queue")
     }
-  }
+  });
 };
 
 main();
