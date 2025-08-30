@@ -1,21 +1,12 @@
 import { Worker } from "bullmq";
-import IORedis from "ioredis";
 import { createDbConnection } from "./db-client";
 
-const redisUrl = "redis://localhost:6379";
-
-const redisConnection = new IORedis(redisUrl, {
-  maxRetriesPerRequest: null,
-  lazyConnect: true,
-});
 type filteredDataType = {
   event: string;
   event_time: Date;
   symbol: string;
   price: number;
   quantity: number;
-  bid_price: number;
-  ask_price: number;
 };
 
 let FILTERED_DATA_ARRAY: filteredDataType[] = [];
@@ -43,15 +34,13 @@ const main = async () => {
           const symbols = FILTERED_DATA_ARRAY.map((data) => data.symbol);
           const prices = FILTERED_DATA_ARRAY.map((data) => data.price);
           const quantities = FILTERED_DATA_ARRAY.map((data) => data.quantity);
-          const bid_prices = FILTERED_DATA_ARRAY.map((data) => data.bid_price);
-          const ask_prices = FILTERED_DATA_ARRAY.map((data) => data.ask_price);
 
           FILTERED_DATA_ARRAY = []; // WE keep this here because the insert takes time and the filtered data array is not updated so it triggers the insert multiple times
           LAST_INSERT_TIME = Date.now();
 
           const query = `
-            INSERT INTO trades (event, event_time, symbol, price, quantity, bid_price, ask_price)
-            SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[])
+            INSERT INTO trades (event, event_time, symbol, price, quantity)
+            SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::decimal[], $5::decimal[])
           `;
 
           await client.query(query, [
@@ -60,8 +49,6 @@ const main = async () => {
             symbols,
             prices,
             quantities,
-            bid_prices,
-            ask_prices,
           ]);
 
           console.log("Inserted into db");
@@ -72,7 +59,7 @@ const main = async () => {
       }
     },
     {
-      connection: redisConnection,
+      connection: { host: "127.0.0.1", port: 6379 },
     }
   );
 

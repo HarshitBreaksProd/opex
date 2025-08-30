@@ -1,35 +1,35 @@
-import { WebSocket } from "ws";
-import { createDbConnection } from "./db-client";
-import { processingQueue } from "./queue";
-
-type filteredDataType = {
-  event: string;
-  event_time: Date;
-  symbol: string;
-  price: number;
-  quantity: number;
-  bid_price: number;
-  ask_price: number;
-};
-
-let FILTERED_DATA_ARRAY: filteredDataType[] = [];
-let LAST_INSERT_TIME = Date.now();
+import { processingQueue, publisher } from "./redis-init";
 
 const ws = new WebSocket(
   "wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade"
 );
 
-const main = async () => {
-  const client = await createDbConnection();
+const usEqWs = new WebSocket("wss://socket.polygon.io/stocks");
 
-  ws.on("open", () => {
-    console.log("Connected");
-    LAST_INSERT_TIME = Date.now();
+const main = async () => {
+  await publisher.connect();
+
+  ws.addEventListener("open", () => {
+    console.log("Connected, Crypto Polling...");
   });
 
-  ws.on("message", async (dataBuffer) => {
-    const data = dataBuffer.toString();
+  // usEqWs.addEventListener("open", () => {
+  //   console.log("Connected, Us Equities Polling...");
+  //   usEqWs.send(
+  //     JSON.stringify({
+  //       action: "auth",
+  //       params: process.env.POLYGON_API,
+  //     })
+  //   );
+
+  //   console.log("Auth req sent");
+  // });
+
+  ws.addEventListener("message", async (event) => {
+    const data = event.data;
     const trade = JSON.parse(data);
+
+    // console.log(trade)
 
     const filteredData = {
       event: trade.data.e,
@@ -37,59 +37,92 @@ const main = async () => {
       symbol: trade.data.s,
       price: parseFloat(trade.data.p),
       quantity: parseFloat(trade.data.q),
-      bid_price: parseFloat(trade.data.p),
-      ask_price: parseFloat(trade.data.p) + 0.02 * parseFloat(trade.data.p),
     };
 
-    FILTERED_DATA_ARRAY.push(filteredData);
+    const spreadStr = (filteredData.price * 0.02).toFixed(4);
+    const price = filteredData.price;
+    const spread = Number(spreadStr);
+    const askPriceStr = (price + spread).toFixed(4);
+    const askPrice = Number(askPriceStr);
 
-    console.log(FILTERED_DATA_ARRAY.length);
+    const streamedData = {
+      ...filteredData,
+      bid_price: filteredData.price,
+      ask_price: askPrice,
+    };
 
-    // if (
-    //   FILTERED_DATA_ARRAY.length >= 300 ||
-    //   Date.now() - LAST_INSERT_TIME >= 5000
-    // ) {
-    //   try {
-    //     const events = FILTERED_DATA_ARRAY.map((data) => data.event);
-    //     const event_times = FILTERED_DATA_ARRAY.map((data) => data.event_time);
-    //     const symbols = FILTERED_DATA_ARRAY.map((data) => data.symbol);
-    //     const prices = FILTERED_DATA_ARRAY.map((data) => data.price);
-    //     const quantities = FILTERED_DATA_ARRAY.map((data) => data.quantity);
-    //     const bid_prices = FILTERED_DATA_ARRAY.map((data) => data.bid_price);
-    //     const ask_prices = FILTERED_DATA_ARRAY.map((data) => data.ask_price);
-
-    //     FILTERED_DATA_ARRAY = []; // WE keep this here because the insert takes time and the filtered data array is not updated so it triggers the insert multiple times
-    //     LAST_INSERT_TIME = Date.now();
-
-    //     const query = `
-    //         INSERT INTO trades (event, event_time, symbol, price, quantity, bid_price, ask_price)
-    //         SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::decimal[], $5::decimal[], $6::decimal[], $7::decimal[])
-    //       `;
-
-    //     await client.query(query, [
-    //       events,
-    //       event_times,
-    //       symbols,
-    //       prices,
-    //       quantities,
-    //       bid_prices,
-    //       ask_prices,
-    //     ]);
-
-    //     console.log("Inserted into db");
-    //     console.log(events.length);
-    //   } catch (e) {
-    //     console.log(e);
-    //   }
-    // }
-
-    try{
-      await processingQueue.add('process-trade', filteredData);
+    try {
+      await processingQueue.add("process-trade", filteredData);
+      await publisher.publish("trades-info", JSON.stringify(streamedData));
+      console.log(streamedData);
     } catch (error) {
       console.log(error);
-      console.log("Error pushing into queue")
+      console.log("Error pushing into queue");
     }
   });
+
+  // usEqWs.addEventListener("message", async (event) => {
+  //   const data = event.data;
+  //   const objData = JSON.parse(data);
+
+  //   console.log("Yeahhh");
+
+  //   if (objData[0].status === "auth_success") {
+  //     usEqWs.send(
+  //       JSON.stringify({
+  //         action: "subscribe",
+  //         params: "T.AAPL,T.MSFT",
+  //       })
+  //     );
+  //   }
+
+  //   if (objData[0].ev === "T") {
+  //     objData.forEach(
+  //       async (trades: {
+  //         ev: "T";
+  //         sym: string;
+  //         i: string;
+  //         x: number;
+  //         p: number;
+  //         s: number;
+  //         t: number;
+  //         z: number;
+  //       }) => {
+  //         const filteredData = {
+  //           event: trades.ev === "T" ? "trade" : "",
+  //           event_time: new Date(trades.t),
+  //           symbol: trades.sym,
+  //           price: trades.p,
+  //           quantity: trades.s,
+  //         };
+
+  //         const spreadStr = (filteredData.price * 0.02).toFixed(4);
+  //         const price = filteredData.price;
+  //         const spread = Number(spreadStr);
+  //         const askPriceStr = (price + spread).toFixed(4);
+  //         const askPrice = Number(askPriceStr);
+
+  //         const streamedData = {
+  //           ...filteredData,
+  //           bid_price: filteredData.price,
+  //           ask_price: askPrice,
+  //         };
+
+  //         try {
+  //           await processingQueue.add("process-trade", filteredData);
+  //           await publisher.publish(
+  //             "trades-info",
+  //             JSON.stringify(streamedData)
+  //           );
+  //           console.log(streamedData);
+  //         } catch (error) {
+  //           console.log(error);
+  //           console.log("Error pushing into queue");
+  //         }
+  //       }
+  //     );
+  //   }
+  // });
 };
 
 main();

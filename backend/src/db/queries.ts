@@ -3,6 +3,7 @@ export const getQuery = async (symbol: string, timeInterval: string) => {
 
   switch (timeInterval) {
     case "1min":
+      console.log("1min");
       candleView = "candles_1m";
       break;
     case "5min":
