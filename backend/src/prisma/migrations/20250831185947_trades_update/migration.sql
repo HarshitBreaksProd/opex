@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "public"."trades" ADD COLUMN     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ALTER COLUMN "marginDecPos" SET DEFAULT 4;

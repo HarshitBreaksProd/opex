@@ -4,7 +4,7 @@ const ws = new WebSocket(
   "wss://stream.binance.com:9443/stream?streams=btcusdt@trade/ethusdt@trade/solusdt@trade"
 );
 
-const usEqWs = new WebSocket("wss://socket.polygon.io/stocks");
+// const usEqWs = new WebSocket("wss://socket.polygon.io/stocks");
 
 const main = async () => {
   await publisher.connect();
@@ -29,8 +29,6 @@ const main = async () => {
     const data = event.data;
     const trade = JSON.parse(data);
 
-    // console.log(trade)
-
     const filteredData = {
       event: trade.data.e,
       event_time: new Date(trade.data.E),
@@ -39,7 +37,7 @@ const main = async () => {
       quantity: parseFloat(trade.data.q),
     };
 
-    const spreadStr = (filteredData.price * 0.02).toFixed(4);
+    const spreadStr = (filteredData.price * 0.01).toFixed(4);
     const price = filteredData.price;
     const spread = Number(spreadStr);
     const askPriceStr = (price + spread).toFixed(4);

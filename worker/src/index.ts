@@ -32,15 +32,17 @@ const main = async () => {
             (data) => data.event_time
           );
           const symbols = FILTERED_DATA_ARRAY.map((data) => data.symbol);
-          const prices = FILTERED_DATA_ARRAY.map((data) => data.price);
-          const quantities = FILTERED_DATA_ARRAY.map((data) => data.quantity);
+          const prices = FILTERED_DATA_ARRAY.map((data) => {
+            return Math.floor(Number(data.price.toString()) * 10000);
+          });
+          const decimal_pos = FILTERED_DATA_ARRAY.map(() => 4);
 
-          FILTERED_DATA_ARRAY = []; // WE keep this here because the insert takes time and the filtered data array is not updated so it triggers the insert multiple times
+          FILTERED_DATA_ARRAY = []; // We keep this here because the insert takes time and the filtered data array is not updated so it triggers the insert multiple times
           LAST_INSERT_TIME = Date.now();
 
           const query = `
-            INSERT INTO trades (event, event_time, symbol, price, quantity)
-            SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::decimal[], $5::decimal[])
+            INSERT INTO trades (event, event_time, symbol, price, decimal_pos)
+            SELECT * FROM unnest($1::varchar[], $2::timestamptz[], $3::varchar[], $4::integer[], $5::integer[])
           `;
 
           await client.query(query, [
@@ -48,7 +50,7 @@ const main = async () => {
             event_times,
             symbols,
             prices,
-            quantities,
+            decimal_pos,
           ]);
 
           console.log("Inserted into db");
