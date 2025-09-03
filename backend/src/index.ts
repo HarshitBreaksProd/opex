@@ -200,8 +200,8 @@ const subscriber = client.duplicate();
             pnl = Number(pnlIntegerPart);
             pnlDecPos = pnlDecimalPosition;
 
-            allOpenOrders[key] =
-              allOpenOrders[key]?.filter((o) => o.id !== order.id) || [];
+            // allOpenOrders[key] =
+            //   allOpenOrders[key]?.filter((o) => o.id !== order.id) || [];
           }
         } else {
           // sell
